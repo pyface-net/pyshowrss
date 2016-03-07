@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-__author__ = "pyface.net"
+__author__ = "pyface-net"
 __version__ = "0.1"
 __license__ = "MIT License"
 
@@ -11,9 +11,16 @@ import os.path
 import urllib2
 import urllib
 import feedparser
+import traceback
 
 def log(message):
         print message
+
+def logExceptionStackTrace(message):
+    log(message)
+    with open("exceptions.log",'a') as outfile:
+        outfile.write(message + "\n")
+        outfile.write(traceback.format_exc())
 
 def saveCache(cache, cache_file):
     with open(cache_file, 'w+') as outfile:
@@ -74,12 +81,12 @@ def processRSSFeed(url, output_dir, post_dl_cmd, validate, cache_file):
                     if post_dl_cmd:
                         subprocess.check_call(post_dl_cmd.split() + [title.encode('ascii', 'ignore')] + [torrent_link])
                     if cache:
-                        cache.set("cache", cache_key, "Downloaded")
+                        cache.set("cache", cache_key, "True")
                         saveCache(cache,cache_file)
                 else:
                     log("Download failed: '%s' (%s)" % (title,torrent_link))
             except:
-                log("Exception while downloading: '%s' (%s)" % (title,torrent_link))
+                logExceptionStackTrace("ERROR: Exception while downloading: '%s' (%s)" % (title,torrent_link))
     log("Done!")
 
 
@@ -109,26 +116,26 @@ def getOptions(config):
 
 def _getArgs():
     DEFAULT_CONFIG_FILENAME = "pyshowrss.ini"
-    program = os.path.basename(__file__)
+    program = os.path.basename(__file__).split('.')[0]
     arg_parser = argparse.ArgumentParser(prog=program, version=__version__,
-                                         description="Downloads .torrents from a showRSS feed")
+                                         description="Downloads .torrent files from a ShowRSS feed")
     arg_parser.add_argument('-c', '-config', dest='configFile',
                             default=os.path.join(os.getcwd(),DEFAULT_CONFIG_FILENAME),
                             help="path to configuration file to use "
-                                 "(default = ./" + DEFAULT_CONFIG_FILENAME)
-    arg_parser.add_argument('-o', '-outputDir', dest='outputDir', default=os.getcwd(),
-                            help="path to an output directory for .torrent files "
-                                 "(default = ./")
+                                 "(default = ./" + DEFAULT_CONFIG_FILENAME + ")")
+    arg_parser.add_argument('-o', '-outputDir', dest='outputDir', default=os.path.join(os.getcwd(), "torrents"),
+                            help="full path to an output directory for .torrent files "
+                                 "(default = ./torrents)")
 
     args = arg_parser.parse_args()
 
     if not os.path.isfile(args.configFile):
-        print "ERROR: config (%s) does not exist" % args.configFile
+        log("ERROR: config (%s) does not exist" % args.configFile)
         return None
 
     if not os.path.isdir(args.outputDir):
-        print "ERROR: output dir (%s) does not exist" % args.outputDirs
-        return None
+        log("WARNING: output dir (%s) does not exist... creating it.." % args.outputDir)
+        os.makedirs(args.outputDir)
 
     return args
 
