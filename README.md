@@ -15,7 +15,7 @@ A small python script to download .torrent files from a [ShowRSS](https://new.sh
 	- `pip install feedparser`
 - A [ShowRSS](https://new.showrss.info) user id
 
-**If running Windows standalone (pyinstaller) version:**
+**If running Windows / Ubuntu-ARM standalone (pyinstaller) version:**
 
 - A [ShowRSS](https://new.showrss.info) user id
 
