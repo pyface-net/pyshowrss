@@ -55,7 +55,7 @@ def download_torrent_file(url, output_dir, validate):
 
     if not validate or (validate and is_valid(torrent_data)):
         torrent_file = os.path.join(output_dir, torrent_name)
-        with open(torrent_file, 'w') as outfile:
+        with open(torrent_file, 'wb') as outfile:
             outfile.write(torrent_data)
         return True
     else:
