@@ -19,10 +19,13 @@ def log(message):
 
 
 def log_exception(message):
-    log(message)
-    with open("exceptions.log", 'a') as outfile:
-        outfile.write(message + "\n")
-        outfile.write(traceback.format_exc())
+    try:
+        log(message)
+        with open("exceptions.log", 'a') as outfile:
+            outfile.write(message + "\n")
+            outfile.write(traceback.format_exc())
+    except:
+        pass
 
 
 def save_cache(cache, cache_file):
@@ -67,7 +70,7 @@ def process_rss_feed(url, output_dir, post_dl_cmd, validate, cache_file):
     rss_feed = feedparser.parse(url)
     log("Checking for new shows...")
     for item in rss_feed.entries:
-        title = item['title']
+        title = item['title'].encode('ascii', 'ignore')
         id = item['id']
         cache_key = hashlib.md5(id).hexdigest()
         torrent_link = item['links'][0]['href']
@@ -76,6 +79,7 @@ def process_rss_feed(url, output_dir, post_dl_cmd, validate, cache_file):
         try:
             if cache:
                 cache.get("cache", cache_key)
+            log("Show already in cache: '%s'" % title)
             download = False
         except:
             pass
@@ -85,7 +89,7 @@ def process_rss_feed(url, output_dir, post_dl_cmd, validate, cache_file):
                 log("Downloading show: '%s' (%s)" % (title, torrent_link))
                 if download_torrent_file(torrent_link, output_dir, validate):
                     if post_dl_cmd:
-                        subprocess.check_call(post_dl_cmd.split() + [title.encode('ascii', 'ignore')] + [torrent_link])
+                        subprocess.check_call(post_dl_cmd.split() + [title] + [torrent_link])
                     if cache:
                         cache.set("cache", cache_key, "True")
                         save_cache(cache, cache_file)
