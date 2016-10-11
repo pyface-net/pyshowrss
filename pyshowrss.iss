@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "PyShowRSS"
-#define MyAppVersion "0.1"
+#define MyAppVersion "0.3"
 #define MyAppPublisher "pyface-net"
 #define MyAppURL "https://github.com/pyface-net/pyshowrss"
 #define MyAppExeName "pyshowrss.exe"

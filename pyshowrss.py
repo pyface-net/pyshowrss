@@ -8,19 +8,19 @@ import urllib2
 import urllib
 import feedparser
 import traceback
+import logging
+import libtorrent
+import time
+import tempfile
 
 __author__ = "pyface.net"
-__version__ = "0.1"
+__version__ = "0.3"
 __license__ = "MIT License"
-
-
-def log(message):
-        print message
 
 
 def log_exception(message):
     try:
-        log(message)
+        logging.error(message)
         with open("exceptions.log", 'a') as outfile:
             outfile.write(message + "\n")
             outfile.write(traceback.format_exc())
@@ -45,18 +45,61 @@ def load_create_cache_file(cache_file):
             pass
     return cache
 
-
+# ..very very poor validation...
 def is_valid(buffer):
-    return (buffer.index('d8') == 0)
+    try:
+        if buffer.index('d8') == 0:
+            return True
+    except:
+        pass
+    try:
+        if buffer.index('d13') == 0:
+            return True
+    except:
+        pass
+    return False
 
+def get_torrent_via_magnet(url):
+    try:
+        session = libtorrent.session()
+        tempdir = tempfile.mkdtemp()
+        params = {
+            'save_path': tempdir,
+            'storage_mode': libtorrent.storage_mode_t(2),
+            'paused': False,
+            'auto_managed': True,
+            'duplicate_is_error': True
+        }
+        handle = libtorrent.add_magnet_uri(session, url, params)
+        while (not handle.has_metadata()):
+            time.sleep(.1)
 
-def download_torrent_file(url, output_dir, validate):
-    safe_url = urllib.quote(url, safe="%/:=&?~#+!$,;'@()*[]")
-    torrent_name = safe_url.split('/')[-1]
-    response = urllib2.urlopen(safe_url)
-    torrent_data = response.read()
+        torinfo = handle.get_torrent_info()
 
-    if not validate or (validate and is_valid(torrent_data)):
+        fs = libtorrent.file_storage()
+        for file in torinfo.files():
+            fs.add_file(file)
+        torfile = libtorrent.create_torrent(fs)
+        torfile.set_comment(torinfo.comment())
+        torfile.set_creator(torinfo.creator())
+        return libtorrent.bencode(torfile.generate())
+    except:
+        return None
+
+def download_torrent_file(url, magnet_link, output_dir, validate):
+    torrent_data = None
+    torrent_name = None
+    if magnet_link:
+        torrent_name = url.split(':')[3].split('&')[0] + ".torrent"
+        torrent_data = get_torrent_via_magnet(url)
+    else:
+        safe_url = urllib.quote(url, safe="%/:=&?~#+!$,;'@()*[]")
+        torrent_name = safe_url.split('/')[-1]
+        response = urllib2.urlopen(safe_url)
+        torrent_data = response.read()
+    if not torrent_data or not torrent_name:
+        return False
+    elif not validate or (validate and is_valid(torrent_data)):
         torrent_file = os.path.join(output_dir, torrent_name)
         with open(torrent_file, 'wb') as outfile:
             outfile.write(torrent_data)
@@ -65,10 +108,10 @@ def download_torrent_file(url, output_dir, validate):
         return False
 
 
-def process_rss_feed(url, output_dir, post_dl_cmd, validate, cache_file):
+def process_rss_feed(url, output_dir, post_dl_cmd, validate, magnet_link, cache_file):
     cache = load_create_cache_file(cache_file)
     rss_feed = feedparser.parse(url)
-    log("Checking for new shows...")
+    logging.info("Checking for new shows...")
     for item in rss_feed.entries:
         title = item['title'].encode('ascii', 'ignore')
         id = item['id']
@@ -79,25 +122,25 @@ def process_rss_feed(url, output_dir, post_dl_cmd, validate, cache_file):
         try:
             if cache:
                 cache.get("cache", cache_key)
-            log("Show already in cache: '%s'" % title)
+            logging.info("Show already in cache: '%s'" % title)
             download = False
         except:
             pass
 
         if download:
             try:
-                log("Downloading show: '%s' (%s)" % (title, torrent_link))
-                if download_torrent_file(torrent_link, output_dir, validate):
+                logging.info("Downloading show: '%s' (%s)" % (title, torrent_link))
+                if download_torrent_file(torrent_link, magnet_link, output_dir, validate):
                     if post_dl_cmd:
                         subprocess.check_call(post_dl_cmd.split() + [title] + [torrent_link])
                     if cache:
                         cache.set("cache", cache_key, "True")
                         save_cache(cache, cache_file)
                 else:
-                    log("Download failed: '%s' (%s)" % (title, torrent_link))
+                    logging.warning("Download failed: '%s' (%s)" % (title, torrent_link))
             except:
-                log_exception("ERROR: Exception while downloading: '%s' (%s)" % (title, torrent_link))
-    log("Done!")
+                log_exception("Exception while downloading: '%s' (%s)" % (title, torrent_link))
+    logging.info("Done!")
 
 
 def get_rss_url(config):
@@ -105,14 +148,16 @@ def get_rss_url(config):
     user_id = config.get("showrss", "user_id")
     quality = config.get("showrss", "quality")
     repack = config.get("showrss", "repack")
+    magnets = config.get("showrss", "magnets")
 
-    return (url % (user_id, quality, repack))
+    return (url % (user_id, magnets, quality, repack))
 
 
 def get_options(config):
     post_dl_cmd = None
     cache_file = None
     validate = False
+    magnets = False
 
     if config.has_option("default", "post_dl_cmd"):
         post_dl_cmd = config.get("default", "post_dl_cmd")
@@ -120,8 +165,10 @@ def get_options(config):
         cache_file = config.get("default", "cache_file")
     if config.has_option("default", "validate_torrent_file"):
         validate = config.getboolean("default", "validate_torrent_file")
+    if config.has_option("showrss", "magnets"):
+        magnets = config.getboolean("showrss", "magnets")
 
-    return (post_dl_cmd, validate, cache_file)
+    return (post_dl_cmd, validate, cache_file, magnets)
 
 
 def get_args():
@@ -141,24 +188,28 @@ def get_args():
     args = arg_parser.parse_args()
 
     if not os.path.isfile(args.configFile):
-        log("ERROR: config (%s) does not exist" % args.configFile)
+        logging.error("config (%s) does not exist" % args.configFile)
         return None
 
     if not os.path.isdir(args.outputDir):
-        log("WARNING: output dir (%s) does not exist... creating it.." % args.outputDir)
+        logging.warning("output dir (%s) does not exist... creating it.." % args.outputDir)
         os.makedirs(args.outputDir)
 
     return args
 
 
 def main():
+    logging.basicConfig(filename='pyshowrss.log',
+                        format='%(asctime)s - %(levelname)s - %(message)s',
+                        datefmt='%m/%d/%Y %I:%M:%S',
+                        level=logging.DEBUG)
     args = get_args()
     if args:
         config = ConfigParser.ConfigParser()
         config.read(args.configFile)
-        (post_dl_cmd, validate, cache_file) = get_options(config)
+        (post_dl_cmd, validate, cache_file, magnet_link) = get_options(config)
         url = get_rss_url(config)
-        process_rss_feed(url, args.outputDir, post_dl_cmd, validate, cache_file)
+        process_rss_feed(url, args.outputDir, post_dl_cmd, validate, magnet_link, cache_file)
 
 if __name__ == "__main__":
     main()
