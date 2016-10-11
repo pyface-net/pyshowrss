@@ -74,6 +74,7 @@ def get_torrent_via_magnet(url):
         while (not handle.has_metadata()):
             time.sleep(.1)
 
+        session.pause()
         torinfo = handle.get_torrent_info()
 
         fs = libtorrent.file_storage()
@@ -82,9 +83,17 @@ def get_torrent_via_magnet(url):
         torfile = libtorrent.create_torrent(fs)
         torfile.set_comment(torinfo.comment())
         torfile.set_creator(torinfo.creator())
-        return libtorrent.bencode(torfile.generate())
+        torrent_data = libtorrent.bencode(torfile.generate())
+        session.remove_torrent(handle)
+        return torrent_data
     except:
-        return None
+        torrent_data = None
+
+    if handle and session:
+        session.remove_torrent(handle)
+
+    return torrent_data
+
 
 def download_torrent_file(url, magnet_link, output_dir, validate):
     torrent_data = None
