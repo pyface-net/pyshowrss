@@ -140,6 +140,9 @@ def process_rss_feed(url, output_dir, post_dl_cmd, validate, magnet_links, magne
                 if magnet_launch and magnet_links:
                     launch_cmd = os.path.expandvars(magnet_launch.replace("%magnet_link%", torrent_link))
                     subprocess.check_call(launch_cmd.split())
+                    if cache:
+                        cache.set("cache", cache_key, "True")
+                        save_cache(cache, cache_file)
                 elif download_torrent_file(torrent_link, magnet_links, output_dir, validate):
                     if post_dl_cmd:
                         subprocess.check_call(os.path.expandvars(post_dl_cmd).split() + [title] + [torrent_link])
