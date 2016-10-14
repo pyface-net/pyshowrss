@@ -59,7 +59,7 @@ def is_valid(buffer):
         pass
     return False
 
-def get_torrent_via_magnet(url):
+def generate_torrent_from_magnet(url):
     try:
         session = libtorrent.session()
         tempdir = tempfile.mkdtemp()
@@ -95,12 +95,10 @@ def get_torrent_via_magnet(url):
     return torrent_data
 
 
-def download_torrent_file(url, magnet_link, output_dir, validate):
-    torrent_data = None
-    torrent_name = None
-    if magnet_link:
+def download_torrent_file(url, magnet_links, output_dir, validate):
+    if magnet_links:
         torrent_name = url.split(':')[3].split('&')[0] + ".torrent"
-        torrent_data = get_torrent_via_magnet(url)
+        torrent_data = generate_torrent_from_magnet(url)
     else:
         safe_url = urllib.quote(url, safe="%/:=&?~#+!$,;'@()*[]")
         torrent_name = safe_url.split('/')[-1]
@@ -117,7 +115,7 @@ def download_torrent_file(url, magnet_link, output_dir, validate):
         return False
 
 
-def process_rss_feed(url, output_dir, post_dl_cmd, validate, magnet_link, cache_file):
+def process_rss_feed(url, output_dir, post_dl_cmd, validate, magnet_links, magnet_launch, cache_file):
     cache = load_create_cache_file(cache_file)
     rss_feed = feedparser.parse(url)
     logging.info("Checking for new shows...")
@@ -127,21 +125,24 @@ def process_rss_feed(url, output_dir, post_dl_cmd, validate, magnet_link, cache_
         cache_key = hashlib.md5(id).hexdigest()
         torrent_link = item['links'][0]['href']
 
-        download = True
+        not_in_cache = True
         try:
             if cache:
                 cache.get("cache", cache_key)
             logging.info("Show already in cache: '%s'" % title)
-            download = False
+            not_in_cache = False
         except:
             pass
 
-        if download:
+        if not_in_cache:
             try:
                 logging.info("Downloading show: '%s' (%s)" % (title, torrent_link))
-                if download_torrent_file(torrent_link, magnet_link, output_dir, validate):
+                if magnet_launch and magnet_links:
+                    launch_cmd = os.path.expandvars(magnet_launch.replace("%magnet_link%", torrent_link))
+                    subprocess.check_call(launch_cmd.split())
+                elif download_torrent_file(torrent_link, magnet_links, output_dir, validate):
                     if post_dl_cmd:
-                        subprocess.check_call(post_dl_cmd.split() + [title] + [torrent_link])
+                        subprocess.check_call(os.path.expandvars(post_dl_cmd).split() + [title] + [torrent_link])
                     if cache:
                         cache.set("cache", cache_key, "True")
                         save_cache(cache, cache_file)
@@ -167,6 +168,7 @@ def get_options(config):
     cache_file = None
     validate = False
     magnets = False
+    magnet_launch = None
 
     if config.has_option("default", "post_dl_cmd"):
         post_dl_cmd = config.get("default", "post_dl_cmd")
@@ -176,8 +178,10 @@ def get_options(config):
         validate = config.getboolean("default", "validate_torrent_file")
     if config.has_option("showrss", "magnets"):
         magnets = config.getboolean("showrss", "magnets")
+    if config.has_option("default", "magnet_launch"):
+        magnet_launch = config.get("default", "magnet_launch")
 
-    return (post_dl_cmd, validate, cache_file, magnets)
+    return (post_dl_cmd, validate, cache_file, magnets, magnet_launch)
 
 
 def get_args():
@@ -216,9 +220,9 @@ def main():
     if args:
         config = ConfigParser.ConfigParser()
         config.read(args.configFile)
-        (post_dl_cmd, validate, cache_file, magnet_link) = get_options(config)
+        (post_dl_cmd, validate, cache_file, magnet_link, magnet_launch) = get_options(config)
         url = get_rss_url(config)
-        process_rss_feed(url, args.outputDir, post_dl_cmd, validate, magnet_link, cache_file)
+        process_rss_feed(url, args.outputDir, post_dl_cmd, validate, magnet_link, magnet_launch, cache_file)
 
 if __name__ == "__main__":
     main()
