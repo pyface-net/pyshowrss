@@ -9,9 +9,9 @@ import urllib
 import feedparser
 import traceback
 import logging
-import libtorrent
 import time
 import tempfile
+
 
 __author__ = "pyface.net"
 __version__ = "0.3"
@@ -26,6 +26,13 @@ def log_exception(message):
             outfile.write(traceback.format_exc())
     except:
         pass
+
+try:
+    import libtorrent
+    has_libtorrent = True
+except:
+    has_libtorrent = False
+    log_exception("Could import 'libtorrent'")
 
 
 def save_cache(cache, cache_file):
@@ -96,7 +103,12 @@ def generate_torrent_from_magnet(url):
 
 
 def download_torrent_file(url, magnet_links, output_dir, validate):
+    torrent_data = None
+    torrent_name = None
     if magnet_links:
+        if not has_libtorrent:
+            logging.error("Download via Magnets links failed because 'libtorrent' is not installed")
+            return False
         torrent_name = url.split(':')[3].split('&')[0] + ".torrent"
         torrent_data = generate_torrent_from_magnet(url)
     else:
