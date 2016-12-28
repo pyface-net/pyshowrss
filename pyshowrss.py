@@ -14,7 +14,7 @@ import tempfile
 
 
 __author__ = "pyface.net"
-__version__ = "0.3"
+__version__ = "0.4"
 __license__ = "MIT License"
 
 
@@ -151,10 +151,14 @@ def process_rss_feed(url, output_dir, post_dl_cmd, validate, magnet_links, magne
                 logging.info("Downloading show: '%s' (%s)" % (title, torrent_link))
                 if magnet_launch and magnet_links:
                     launch_cmd = os.path.expandvars(magnet_launch.replace("%magnet_link%", torrent_link))
-                    subprocess.check_call(launch_cmd.split())
-                    if cache:
+                    proc = subprocess.Popen(launch_cmd.split())
+                    if proc == None:
+                        logging.warning("Failed to launch torrent client for magnet link: '%s' " % (launch_cmd))
+                        continue
+                    elif cache:
                         cache.set("cache", cache_key, "True")
                         save_cache(cache, cache_file)
+                    time.sleep(5)
                 elif download_torrent_file(torrent_link, magnet_links, output_dir, validate):
                     if post_dl_cmd:
                         subprocess.check_call(os.path.expandvars(post_dl_cmd).split() + [title] + [torrent_link])
